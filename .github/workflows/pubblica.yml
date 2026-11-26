@@ -1,0 +1,61 @@
+name: Pubblica il sito
+
+# Costruisce il sito e lo pubblica su GitHub Pages a ogni caricamento sul ramo main.
+# Prima volta: Settings → Pages → Source «GitHub Actions», e le tre variabili in
+# Settings → Secrets and variables → Actions → Variables.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  costruisci:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Senza queste il sito si pubblicherebbe, ma non si collegherebbe a niente
+      - name: Controlla le variabili
+        run: |
+          for nome in VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY VITE_GOOGLE_CLIENT_ID; do
+            if [ -z "${!nome}" ]; then
+              echo "::error::Manca la variabile $nome (Settings → Secrets and variables → Actions → Variables)"
+              exit 1
+            fi
+          done
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  pubblica:
+    needs: costruisci
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
